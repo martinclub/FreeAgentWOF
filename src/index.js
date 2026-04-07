@@ -6,7 +6,10 @@ const {
     TextInputBuilder, 
     TextInputStyle, 
     ActionRowBuilder, 
-    Events 
+    Events,
+    REST,
+    Routes,
+    SlashCommandBuilder
 } = require('discord.js');
 const stateManager = require('./stateManager');
 const uiGenerator = require('./uiGenerator');
@@ -49,6 +52,32 @@ async function updateMainMessage(channel) {
 client.once(Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user.tag}!`);
     
+    // Register slash commands
+    if (process.env.CLIENT_ID && process.env.GUILD_ID) {
+        const commands = [
+            new SlashCommandBuilder()
+                .setName('setup')
+                .setDescription('Initializes the Free Agents channel and message.')
+        ].map(command => command.toJSON());
+
+        const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+
+        try {
+            console.log('Started refreshing application (/) commands.');
+
+            await rest.put(
+                Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+                { body: commands },
+            );
+
+            console.log('Successfully reloaded application (/) commands.');
+        } catch (error) {
+            console.error('Failed to register commands:', error.message);
+        }
+    } else {
+        console.warn('CLIENT_ID or GUILD_ID not found in .env. Skipping slash command registration.');
+    }
+
     const channelId = process.env.CHANNEL_ID;
     if (!channelId) {
         console.error('CHANNEL_ID is not defined in .env');
@@ -66,6 +95,13 @@ client.once(Events.ClientReady, async () => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+    if (interaction.isChatInputCommand()) {
+        if (interaction.commandName === 'setup') {
+            await interaction.reply({ content: 'Setting up Free Agents channel...', ephemeral: true });
+            await updateMainMessage(interaction.channel);
+        }
+    }
+
     if (interaction.isButton()) {
         if (interaction.customId === 'btn_join') {
             const agents = await stateManager.loadAgents();
